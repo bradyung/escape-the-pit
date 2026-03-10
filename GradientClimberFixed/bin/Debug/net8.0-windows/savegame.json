@@ -1,7 +1,7 @@
 {
   "NormalUnlocked": true,
-  "HardUnlocked": false,
-  "ExpertUnlocked": false,
-  "BestScoreClassic": 5010,
+  "HardUnlocked": true,
+  "ExpertUnlocked": true,
+  "BestScoreClassic": 5050,
   "BestScoreEndless": 0
 }

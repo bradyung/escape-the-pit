@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 
 namespace GradientClimber
 {
@@ -67,19 +68,34 @@ namespace GradientClimber
             Bitmap bmp = new Bitmap(GridCols * CellSize, GridRows * CellSize);
 
             using Graphics g = Graphics.FromImage(bmp);
+            g.SmoothingMode = SmoothingMode.None;
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
 
             for (int row = 0; row < GridRows; row++)
             {
                 for (int col = 0; col < GridCols; col++)
                 {
                     double h = _sampleHeights[row, col];
-                    double t = (h - _minHeight) / (_maxHeight - _minHeight);
-                    using SolidBrush brush = new SolidBrush(HeightToColor(t));
+                    double t = NormalizeHeight(h);
+
+                    Color baseColor = HeightToColor(t);
+                    Color shadedColor = ApplySimpleShading(row, col, baseColor);
+
+                    using SolidBrush brush = new SolidBrush(shadedColor);
                     g.FillRectangle(brush, col * CellSize, row * CellSize, CellSize, CellSize);
                 }
             }
 
-            using Pen contourPen = new Pen(Color.FromArgb(80, 0, 0, 0), 1);
+            DrawContours(g);
+
+            return bmp;
+        }
+
+        private void DrawContours(Graphics g)
+        {
+            using Pen majorContourPen = new Pen(Color.FromArgb(65, 0, 0, 0), 1);
+            using Pen minorContourPen = new Pen(Color.FromArgb(28, 0, 0, 0), 1);
 
             for (int row = 0; row < GridRows - 1; row++)
             {
@@ -92,19 +108,26 @@ namespace GradientClimber
                     int x = col * CellSize;
                     int y = row * CellSize;
 
+                    bool majorRight = IsMajorContour(q) || IsMajorContour(qRight);
+                    bool majorDown = IsMajorContour(q) || IsMajorContour(qDown);
+
                     if (q != qRight)
                     {
-                        g.DrawLine(contourPen, x + CellSize - 1, y, x + CellSize - 1, y + CellSize);
+                        g.DrawLine(
+                            majorRight ? majorContourPen : minorContourPen,
+                            x + CellSize - 1, y,
+                            x + CellSize - 1, y + CellSize);
                     }
 
                     if (q != qDown)
                     {
-                        g.DrawLine(contourPen, x, y + CellSize - 1, x + CellSize, y + CellSize - 1);
+                        g.DrawLine(
+                            majorDown ? majorContourPen : minorContourPen,
+                            x, y + CellSize - 1,
+                            x + CellSize, y + CellSize - 1);
                     }
                 }
             }
-
-            return bmp;
         }
 
         private void BuildSamples()
@@ -136,22 +159,67 @@ namespace GradientClimber
             }
         }
 
+        private double NormalizeHeight(double h)
+        {
+            if (Math.Abs(_maxHeight - _minHeight) < 0.000001)
+                return 0.5;
+
+            return (h - _minHeight) / (_maxHeight - _minHeight);
+        }
+
         private int Quantize(double h)
         {
-            double t = (h - _minHeight) / (_maxHeight - _minHeight);
-            return (int)(t * 14);
+            double t = NormalizeHeight(h);
+            return (int)(t * 10);
+        }
+
+        private bool IsMajorContour(int q)
+        {
+            return q % 2 == 0;
+        }
+
+        private Color ApplySimpleShading(int row, int col, Color baseColor)
+        {
+            int left = Math.Max(0, col - 1);
+            int right = Math.Min(GridCols - 1, col + 1);
+            int up = Math.Max(0, row - 1);
+            int down = Math.Min(GridRows - 1, row + 1);
+
+            double dx = _sampleHeights[row, right] - _sampleHeights[row, left];
+            double dy = _sampleHeights[down, col] - _sampleHeights[up, col];
+
+            double shade = (-dx * 0.6) + (-dy * 0.4);
+            shade = Math.Max(-0.18, Math.Min(0.18, shade));
+
+            return AdjustBrightness(baseColor, shade);
+        }
+
+        private Color AdjustBrightness(Color color, double amount)
+        {
+            int r = ClampToByte(color.R + (int)(255 * amount));
+            int g = ClampToByte(color.G + (int)(255 * amount));
+            int b = ClampToByte(color.B + (int)(255 * amount));
+
+            return Color.FromArgb(r, g, b);
+        }
+
+        private int ClampToByte(int value)
+        {
+            if (value < 0) return 0;
+            if (value > 255) return 255;
+            return value;
         }
 
         private Color HeightToColor(double t)
         {
-            if (t < 0.10) return Color.MidnightBlue;
-            if (t < 0.22) return Color.RoyalBlue;
-            if (t < 0.36) return Color.SeaGreen;
-            if (t < 0.50) return Color.ForestGreen;
-            if (t < 0.64) return Color.Goldenrod;
-            if (t < 0.78) return Color.DarkOrange;
-            if (t < 0.90) return Color.IndianRed;
-            return Color.WhiteSmoke;
+            if (t < 0.12) return Color.FromArgb(18, 38, 92);
+            if (t < 0.24) return Color.FromArgb(38, 86, 140);
+            if (t < 0.38) return Color.FromArgb(50, 112, 82);
+            if (t < 0.52) return Color.FromArgb(78, 128, 68);
+            if (t < 0.66) return Color.FromArgb(156, 128, 58);
+            if (t < 0.80) return Color.FromArgb(188, 122, 54);
+            if (t < 0.92) return Color.FromArgb(170, 102, 102);
+            return Color.FromArgb(225, 225, 225);
         }
     }
 }

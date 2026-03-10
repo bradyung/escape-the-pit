@@ -8,25 +8,6 @@ namespace GradientClimber
 {
     public class GameForm : Form
     {
-        private enum ScreenState
-        {
-            Title,
-            DifficultySelect,
-            ModeSelect,
-            Playing,
-            LevelComplete,
-            GameWon,
-            GameLost
-        }
-
-        private enum Difficulty
-        {
-            Easy,
-            Normal,
-            Hard,
-            Expert
-        }
-
         private readonly List<Level> _levels = new List<Level>();
         private int _currentLevelIndex = 0;
 
@@ -55,7 +36,7 @@ namespace GradientClimber
         private int _messageFrames = 0;
         private string _lastMedal = "Bronze";
 
-        private const int HudWidth = 340;
+        private const int HudWidth = 240;
         private const double TrailSpacing = 0.20;
 
         private PointF _lastTrailPoint;
@@ -63,19 +44,12 @@ namespace GradientClimber
         private int _bigHintFrames = 0;
 
         private bool[,] _explored;
-        private readonly int _fogRadiusCells = 9;
+        private readonly int _fogRadiusCells = 10;
 
         private bool _showPeakAfterWin = false;
-        private bool _showPeakMarkerDuringPlay = false;
         private bool _showSmallGradientArrow = true;
         private bool _allowHintArrow = true;
         private bool _allowGradientStep = true;
-        private bool _showMiniMap = true;
-        private bool _showContoursOnly = false;
-        private bool _criticalPointGoal = false;
-
-        private double _criticalTargetX;
-        private double _criticalTargetY;
 
         private bool _playerNearWater = false;
         private bool _playerOnIce = false;
@@ -97,7 +71,7 @@ namespace GradientClimber
         {
             BuildLevels();
 
-            _terrain = new TerrainMap(95, 95, 7, -10, 10, _levels[0]);
+            _terrain = new TerrainMap(100, 100, 6, -10, 10, _levels[0]);
             _terrainBitmap = _terrain.BuildBitmap();
             _player = new Player(-8.5, -8.0);
             _explored = new bool[_terrain.GridRows, _terrain.GridCols];
@@ -124,24 +98,24 @@ namespace GradientClimber
             _levels.Clear();
 
             _levels.Add(new Level(
-                "Level 1: Smooth Hill",
-                "A simple paraboloid. Follow the gradient uphill toward the global maximum.",
+                "Level 1",
+                "A smooth hill. Follow the gradient uphill.",
                 (x, y) => 12 - (x * x + y * y) / 8.0,
                 (x, y) => -x / 4.0,
                 (x, y) => -y / 4.0
             ));
 
             _levels.Add(new Level(
-                "Level 2: Wavy Mountain",
-                "A hill with ripples. The gradient still points in the direction of steepest ascent.",
+                "Level 2",
+                "A hill with waves and local variation.",
                 (x, y) => 10 - (x * x + y * y) / 12.0 + 2 * Math.Sin(x) * Math.Cos(y),
                 (x, y) => -x / 6.0 + 2 * Math.Cos(x) * Math.Cos(y),
                 (x, y) => -y / 6.0 - 2 * Math.Sin(x) * Math.Sin(y)
             ));
 
             _levels.Add(new Level(
-                "Level 3: Tricky Peaks",
-                "Local highs can fool you, but only the global maximum wins.",
+                "Level 3",
+                "Local highs can fool you. Find the true peak.",
                 (x, y) =>
                     10 - (x * x + y * y) / 13.0
                     + 1.5 * Math.Sin(0.9 * x) * Math.Cos(0.8 * y)
@@ -174,8 +148,8 @@ namespace GradientClimber
             double amp = 1.2 + _random.NextDouble() * 1.6;
 
             return new Level(
-                $"Endless Round {_endlessRound}",
-                "A randomized multivariable surface. Find the global maximum again.",
+                $"Round {_endlessRound}",
+                "A randomized mountain. Find the highest point.",
                 (x, y) =>
                     11
                     - (x * x + y * y) / a
@@ -209,7 +183,6 @@ namespace GradientClimber
                     _showSmallGradientArrow = true;
                     _allowHintArrow = true;
                     _allowGradientStep = true;
-                    _showPeakMarkerDuringPlay = false;
                     break;
 
                 case Difficulty.Normal:
@@ -220,7 +193,6 @@ namespace GradientClimber
                     _showSmallGradientArrow = true;
                     _allowHintArrow = true;
                     _allowGradientStep = true;
-                    _showPeakMarkerDuringPlay = false;
                     break;
 
                 case Difficulty.Hard:
@@ -231,7 +203,6 @@ namespace GradientClimber
                     _showSmallGradientArrow = true;
                     _allowHintArrow = true;
                     _allowGradientStep = true;
-                    _showPeakMarkerDuringPlay = false;
                     break;
 
                 case Difficulty.Expert:
@@ -242,7 +213,6 @@ namespace GradientClimber
                     _showSmallGradientArrow = false;
                     _allowHintArrow = false;
                     _allowGradientStep = false;
-                    _showPeakMarkerDuringPlay = false;
                     break;
             }
         }
@@ -250,15 +220,6 @@ namespace GradientClimber
         private void StartGame()
         {
             ApplyDifficultySettings();
-
-            _showContoursOnly = (_gameMode == GameMode.ContourOnly);
-            _criticalPointGoal = (_gameMode == GameMode.CriticalPointHunt);
-
-            if (_criticalPointGoal)
-            {
-                _criticalTargetX = 0;
-                _criticalTargetY = 0;
-            }
 
             _endlessRound = 1;
             _currentLevelIndex = 0;
@@ -306,6 +267,7 @@ namespace GradientClimber
 
             _winParticles.Clear();
             _winParticleVelocity.Clear();
+            _player.Trail.Clear();
 
             RevealAroundPlayer();
             ShowMessage(_terrain.CurrentLevel.Description);
@@ -348,7 +310,6 @@ namespace GradientClimber
             {
                 AddFalseSummit(-3.0f, 3.0f);
                 AddFalseSummit(4.0f, -2.0f);
-                AddFalseSummit(0.5f, 5.0f);
                 return;
             }
 
@@ -361,13 +322,11 @@ namespace GradientClimber
             {
                 AddFalseSummit(-2.0f, 3.2f);
                 AddFalseSummit(3.8f, 1.5f);
-                AddFalseSummit(-4.1f, -2.7f);
             }
             else
             {
                 AddFalseSummit(2.8f, -1.7f);
                 AddFalseSummit(-3.6f, 2.6f);
-                AddFalseSummit(0.8f, 4.1f);
             }
         }
 
@@ -410,7 +369,6 @@ namespace GradientClimber
             UpdateTrail();
             UpdateHintArrow();
             RevealAroundPlayer();
-            CheckCriticalPointWarning();
             CheckFalseSummits();
             CheckWinLoss();
 
@@ -528,18 +486,6 @@ namespace GradientClimber
             return new Point(col, row);
         }
 
-        private void CheckCriticalPointWarning()
-        {
-            double gx = _terrain.PartialX(_player.X, _player.Y);
-            double gy = _terrain.PartialY(_player.X, _player.Y);
-            double gradMag = Math.Sqrt(gx * gx + gy * gy);
-
-            if (gradMag < 0.18)
-            {
-                ShowMessage("Gradient is small here. You may be near a critical point or a trap.");
-            }
-        }
-
         private void CheckFalseSummits()
         {
             for (int i = 0; i < _falseSummits.Count; i++)
@@ -554,7 +500,7 @@ namespace GradientClimber
                     _levelStartTime = _levelStartTime.AddSeconds(-_falseSummitPenaltySeconds);
                     _score = Math.Max(0, _score - _falseSummitPenaltyScore);
                     AudioManager.PlayFalseSummit();
-                    ShowMessage("False summit! You lost time and score.");
+                    ShowMessage("False summit! Lost time and score.");
                     break;
                 }
             }
@@ -569,25 +515,6 @@ namespace GradientClimber
                 AudioManager.PlayLose();
                 _screenState = ScreenState.GameLost;
                 return;
-            }
-
-            if (_criticalPointGoal)
-            {
-                double gx = _terrain.PartialX(_player.X, _player.Y);
-                double gy = _terrain.PartialY(_player.X, _player.Y);
-                double gradMag = Math.Sqrt(gx * gx + gy * gy);
-
-                if (gradMag < 0.10)
-                {
-                    int points = 500 + secondsLeft * 8 - _hintUses * 30 - _gradientStepsUsed * 20;
-                    _score += Math.Max(100, points);
-                    _lastMedal = GetMedalText();
-                    _showPeakAfterWin = true;
-                    CreateWinParticles();
-                    AudioManager.PlayLevelComplete();
-                    _screenState = ScreenState.LevelComplete;
-                    return;
-                }
             }
 
             double d = Distance(_player.X, _player.Y, _terrain.PeakX, _terrain.PeakY);
@@ -619,18 +546,18 @@ namespace GradientClimber
                 return;
             }
 
-            double gx = _terrain.PartialX(_player.X, _player.Y);
-            double gy = _terrain.PartialY(_player.X, _player.Y);
-            double mag = Math.Sqrt(gx * gx + gy * gy);
+            double dx = _terrain.PeakX - _player.X;
+            double dy = _terrain.PeakY - _player.Y;
+            double mag = Math.Sqrt(dx * dx + dy * dy);
 
             if (mag < 0.0001)
                 return;
 
-            gx /= mag;
-            gy /= mag;
+            dx /= mag;
+            dy /= mag;
 
-            _player.X += gx * 0.55;
-            _player.Y += gy * 0.55;
+            _player.X += dx * 0.55;
+            _player.Y += dy * 0.55;
 
             if (_player.X < _terrain.WorldMin) _player.X = _terrain.WorldMin;
             if (_player.X > _terrain.WorldMax) _player.X = _terrain.WorldMax;
@@ -638,7 +565,7 @@ namespace GradientClimber
             if (_player.Y > _terrain.WorldMax) _player.Y = _terrain.WorldMax;
 
             _gradientStepsUsed++;
-            ShowMessage("Gradient step taken: moved in the direction of steepest ascent.");
+            ShowMessage("Gradient step used.");
         }
 
         private void UseHint()
@@ -784,18 +711,6 @@ namespace GradientClimber
                 }
                 else if (e.KeyCode == Keys.D2 || e.KeyCode == Keys.NumPad2)
                 {
-                    _gameMode = GameMode.ContourOnly;
-                    AudioManager.PlayMenu();
-                    StartGame();
-                }
-                else if (e.KeyCode == Keys.D3 || e.KeyCode == Keys.NumPad3)
-                {
-                    _gameMode = GameMode.CriticalPointHunt;
-                    AudioManager.PlayMenu();
-                    StartGame();
-                }
-                else if (e.KeyCode == Keys.D4 || e.KeyCode == Keys.NumPad4)
-                {
                     _gameMode = GameMode.Endless;
                     AudioManager.PlayMenu();
                     StartGame();
@@ -852,462 +767,82 @@ namespace GradientClimber
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             if (_screenState == ScreenState.Title)
             {
-                DrawTitleScreen(g);
+                MenuRenderer.DrawTitleScreen(g, ClientSize);
                 return;
             }
 
             if (_screenState == ScreenState.DifficultySelect)
             {
-                DrawDifficultyScreen(g);
+                MenuRenderer.DrawDifficultyScreen(g, ClientSize, _saveData);
                 return;
             }
 
             if (_screenState == ScreenState.ModeSelect)
             {
-                DrawModeScreen(g);
+                MenuRenderer.DrawModeScreen(g, ClientSize, _saveData);
                 return;
             }
 
             if (_screenState == ScreenState.GameWon)
             {
                 g.Clear(Color.FromArgb(20, 20, 30));
-                DrawOverlay(g, "YOU WON", $"Final Score: {_score}\nBest Medal: {_lastMedal}\nPress Enter to return to title");
+                MenuRenderer.DrawOverlay(g, ClientSize, "YOU WON", $"Final Score: {_score}\nBest Medal: {_lastMedal}\nPress Enter");
                 return;
             }
 
             if (_screenState == ScreenState.GameLost)
             {
                 g.Clear(Color.FromArgb(20, 20, 30));
-                DrawOverlay(g, "TIME UP", $"Final Score: {_score}\nPress Enter to return to title");
+                MenuRenderer.DrawOverlay(g, ClientSize, "TIME UP", $"Final Score: {_score}\nPress Enter");
                 return;
             }
 
-            if (_showContoursOnly)
-            {
-                g.Clear(Color.Black);
-                DrawContourLines(g);
-            }
-            else
-            {
-                g.DrawImage(_terrainBitmap, 0, 0);
-            }
+            GameRenderer.DrawWorld(
+            g,
+            _terrain,
+            _terrainBitmap,
+            _player,
+            _falseSummits,
+            _falseSummitTriggered,
+            _winParticles,
+            _showPeakAfterWin,
+            _showSmallGradientArrow,
+            _showBigHintArrow,
+            _pulseTime,
+            _fogRadiusCells
+            );
 
-            DrawTrail(g);
-            DrawFalseSummitMarkersIfDiscovered(g);
-
-            if (_showPeakMarkerDuringPlay || _showPeakAfterWin)
-                DrawPeak(g);
-
-            DrawPlayer(g);
-
-            if (_showSmallGradientArrow)
-                DrawGradientArrow(g);
-
-            if (_showBigHintArrow)
-                DrawBigHintArrow(g);
-
-            DrawWinParticles(g);
-            ApplyFogOfWar(g);
-            DrawHud(g);
-            DrawMiniMap(g);
+            HudRenderer.Draw(
+                g,
+                mapWidth: _terrain.GridCols * _terrain.CellSize,
+                hudWidth: HudWidth,
+                clientHeight: ClientSize.Height,
+                levelName: _gameMode == GameMode.Endless ? $"Endless {_endlessRound}" : _levels[_currentLevelIndex].Name,
+                difficulty: _difficulty.ToString(),
+                mode: _gameMode.ToString(),
+                score: _score,
+                timeLeft: GetSecondsLeft(),
+                playerX: _player.X,
+                playerY: _player.Y,
+                height: _terrain.Height(_player.X, _player.Y),
+                gradientMagnitude: Math.Sqrt(
+                    _terrain.PartialX(_player.X, _player.Y) * _terrain.PartialX(_player.X, _player.Y) +
+                    _terrain.PartialY(_player.X, _player.Y) * _terrain.PartialY(_player.X, _player.Y)),
+                hintsLeft: _allowHintArrow ? (_maxHints - _hintUses).ToString() : "Off",
+                stepsLeft: _allowGradientStep ? (_maxGradientSteps - _gradientStepsUsed).ToString() : "Off",
+                goalText: "Reach the highest point",
+                message: _messageFrames > 0 ? _message : ""
+            );
 
             if (_screenState == ScreenState.LevelComplete)
             {
-                DrawOverlay(g, "LEVEL COMPLETE", $"Medal: {_lastMedal}\nPress Enter for next level");
-            }
-        }
-
-        private void DrawTitleScreen(Graphics g)
-        {
-            g.Clear(Color.FromArgb(20, 20, 30));
-
-            using Font title = new Font("Segoe UI", 28, FontStyle.Bold);
-            using Font subtitle = new Font("Segoe UI", 13, FontStyle.Regular);
-            using Font body = new Font("Segoe UI", 11, FontStyle.Regular);
-
-            g.DrawString("Gradient Climber", title, Brushes.Gold, 245, 90);
-            g.DrawString("A replayable multivariable calculus game", subtitle, Brushes.White, 220, 150);
-
-            string text =
-                "Explore terrain generated by multivariable functions.\n" +
-                "Use gradients, contour clues, and critical-point logic.\n\n" +
-                "Features:\n" +
-                "- Fog of war\n" +
-                "- Special modes\n" +
-                "- Endless replayability\n" +
-                "- Progression unlocks\n" +
-                "- False summits and terrain effects\n\n" +
-                "Press Enter to continue";
-
-            g.DrawString(text, body, Brushes.WhiteSmoke, new RectangleF(205, 225, 500, 280));
-        }
-
-        private void DrawDifficultyScreen(Graphics g)
-        {
-            g.Clear(Color.FromArgb(18, 18, 28));
-
-            using Font title = new Font("Segoe UI", 24, FontStyle.Bold);
-            using Font body = new Font("Segoe UI", 11, FontStyle.Regular);
-
-            g.DrawString("Choose Difficulty", title, Brushes.Gold, 250, 90);
-
-            string hardText = _saveData.HardUnlocked ? "" : " (Locked)";
-            string expertText = _saveData.ExpertUnlocked ? "" : " (Locked)";
-
-            string text =
-                $"1 - Easy      : more time, more hints, more gradient steps\n" +
-                $"2 - Normal    : balanced challenge\n" +
-                $"3 - Hard{hardText}\n" +
-                $"4 - Expert{expertText}\n\n" +
-                "Higher difficulties reduce assistance and increase pressure.\n" +
-                "Expert disables hint arrows, gradient steps, and the small arrow.";
-
-            g.DrawString(text, body, Brushes.White, new RectangleF(170, 190, 560, 250));
-        }
-
-        private void DrawModeScreen(Graphics g)
-        {
-            g.Clear(Color.FromArgb(18, 18, 28));
-
-            using Font title = new Font("Segoe UI", 24, FontStyle.Bold);
-            using Font body = new Font("Segoe UI", 11, FontStyle.Regular);
-
-            g.DrawString("Choose Game Mode", title, Brushes.Gold, 225, 90);
-
-            string text =
-                "1 - Classic             : reach the global maximum\n" +
-                "2 - Contour Only        : play using contour lines instead of colored terrain\n" +
-                "3 - Critical Hunt       : win by finding a point where |∇f| is near zero\n" +
-                "4 - Endless             : randomized mountains forever\n\n" +
-                $"Best Classic Score: {_saveData.BestScoreClassic}\n" +
-                $"Best Endless Score: {_saveData.BestScoreEndless}";
-
-            g.DrawString(text, body, Brushes.White, new RectangleF(155, 185, 600, 260));
-        }
-
-        private void DrawOverlay(Graphics g, string title, string subtitle)
-        {
-            using SolidBrush bg = new SolidBrush(Color.FromArgb(180, 0, 0, 0));
-            g.FillRectangle(bg, 120, 160, 500, 220);
-
-            using Font titleFont = new Font("Segoe UI", 24, FontStyle.Bold);
-            using Font bodyFont = new Font("Segoe UI", 12, FontStyle.Regular);
-
-            g.DrawRectangle(Pens.Gold, 120, 160, 500, 220);
-            g.DrawString(title, titleFont, Brushes.Gold, 205, 195);
-            g.DrawString(subtitle, bodyFont, Brushes.White, new RectangleF(175, 255, 390, 95));
-        }
-
-        private void DrawPeak(Graphics g)
-        {
-            PointF peak = _terrain.WorldToScreen(_terrain.PeakX, _terrain.PeakY);
-
-            float pulse = 20 + 6 * (float)Math.Sin(_pulseTime * 2f);
-
-            using Pen glow = new Pen(Color.Gold, 4);
-            g.DrawEllipse(glow, peak.X - pulse / 2, peak.Y - pulse / 2, pulse, pulse);
-            g.FillEllipse(Brushes.Gold, peak.X - 5, peak.Y - 5, 10, 10);
-        }
-
-        private void DrawPlayer(Graphics g)
-        {
-            PointF p = _terrain.WorldToScreen(_player.X, _player.Y);
-
-            float glowRadius = 18 + 3 * (float)Math.Sin(_player.GlowPhase);
-            using SolidBrush glow = new SolidBrush(Color.FromArgb(70, 80, 220, 255));
-            g.FillEllipse(glow, p.X - glowRadius / 2, p.Y - glowRadius / 2, glowRadius, glowRadius);
-
-            g.FillEllipse(Brushes.Black, p.X - 8, p.Y - 8, 16, 16);
-            g.DrawEllipse(Pens.White, p.X - 8, p.Y - 8, 16, 16);
-        }
-
-        private void DrawTrail(Graphics g)
-        {
-            if (_player.Trail.Count < 2) return;
-
-            for (int i = 1; i < _player.Trail.Count; i++)
-            {
-                int alpha = 40 + (int)(180.0 * i / _player.Trail.Count);
-                using Pen pen = new Pen(Color.FromArgb(alpha, 255, 255, 255), 2);
-                g.DrawLine(pen, _player.Trail[i - 1], _player.Trail[i]);
-            }
-        }
-
-        private void ApplyFogOfWar(Graphics g)
-        {
-            using SolidBrush unseenBrush = new SolidBrush(Color.FromArgb(235, 0, 0, 0));
-            using SolidBrush seenBrush = new SolidBrush(Color.FromArgb(90, 0, 0, 0));
-
-            for (int row = 0; row < _terrain.GridRows; row++)
-            {
-                for (int col = 0; col < _terrain.GridCols; col++)
-                {
-                    int x = col * _terrain.CellSize;
-                    int y = row * _terrain.CellSize;
-
-                    if (_explored[row, col])
-                    {
-                        g.FillRectangle(seenBrush, x, y, _terrain.CellSize, _terrain.CellSize);
-                    }
-                    else
-                    {
-                        g.FillRectangle(unseenBrush, x, y, _terrain.CellSize, _terrain.CellSize);
-                    }
-                }
-            }
-        }
-
-        private void DrawFalseSummitMarkersIfDiscovered(Graphics g)
-        {
-            using Pen pen = new Pen(Color.MediumPurple, 2);
-
-            for (int i = 0; i < _falseSummits.Count; i++)
-            {
-                if (!_falseSummitTriggered[i]) continue;
-
-                PointF p = _terrain.WorldToScreen(_falseSummits[i].X, _falseSummits[i].Y);
-                g.DrawEllipse(pen, p.X - 8, p.Y - 8, 16, 16);
-                g.DrawLine(pen, p.X - 8, p.Y - 8, p.X + 8, p.Y + 8);
-                g.DrawLine(pen, p.X + 8, p.Y - 8, p.X - 8, p.Y + 8);
-            }
-        }
-
-        private void DrawGradientArrow(Graphics g)
-        {
-            PointF p = _terrain.WorldToScreen(_player.X, _player.Y);
-
-            double gx = _terrain.PartialX(_player.X, _player.Y);
-            double gy = _terrain.PartialY(_player.X, _player.Y);
-            double mag = Math.Sqrt(gx * gx + gy * gy);
-
-            if (mag < 0.0001) return;
-
-            gx /= mag;
-            gy /= mag;
-
-            float endX = p.X + (float)(gx * 34);
-            float endY = p.Y - (float)(gy * 34);
-
-            using Pen pen = new Pen(Color.White, 3);
-            g.DrawLine(pen, p.X, p.Y, endX, endY);
-            g.FillEllipse(Brushes.White, endX - 4, endY - 4, 8, 8);
-        }
-
-        private void DrawBigHintArrow(Graphics g)
-        {
-            PointF p = _terrain.WorldToScreen(_player.X, _player.Y);
-
-            double gx = _terrain.PartialX(_player.X, _player.Y);
-            double gy = _terrain.PartialY(_player.X, _player.Y);
-            double mag = Math.Sqrt(gx * gx + gy * gy);
-
-            if (mag < 0.0001) return;
-
-            gx /= mag;
-            gy /= mag;
-
-            float endX = p.X + (float)(gx * 85);
-            float endY = p.Y - (float)(gy * 85);
-
-            using Pen pen = new Pen(Color.Cyan, 5);
-            g.DrawLine(pen, p.X, p.Y, endX, endY);
-            g.FillEllipse(Brushes.Cyan, endX - 6, endY - 6, 12, 12);
-        }
-
-        private void DrawWinParticles(Graphics g)
-        {
-            foreach (PointF p in _winParticles)
-            {
-                g.FillEllipse(Brushes.Gold, p.X - 2, p.Y - 2, 4, 4);
-            }
-        }
-
-        private void DrawMiniMap(Graphics g)
-        {
-            if (!_showMiniMap) return;
-
-            int mapX = ClientSize.Width - 150;
-            int mapY = 20;
-            int mapW = 120;
-            int mapH = 120;
-
-            using SolidBrush bg = new SolidBrush(Color.FromArgb(180, 0, 0, 0));
-            g.FillRectangle(bg, mapX, mapY, mapW, mapH);
-            g.DrawRectangle(Pens.White, mapX, mapY, mapW, mapH);
-
-            for (int row = 0; row < _terrain.GridRows; row += 3)
-            {
-                for (int col = 0; col < _terrain.GridCols; col += 3)
-                {
-                    if (_explored[row, col])
-                    {
-                        int x = mapX + col * mapW / _terrain.GridCols;
-                        int y = mapY + row * mapH / _terrain.GridRows;
-                        g.FillRectangle(Brushes.DimGray, x, y, 2, 2);
-                    }
-                }
-            }
-
-            float px = mapX + (float)((_player.X - _terrain.WorldMin) / (_terrain.WorldMax - _terrain.WorldMin) * mapW);
-            float py = mapY + (float)((_terrain.WorldMax - _player.Y) / (_terrain.WorldMax - _terrain.WorldMin) * mapH);
-
-            g.FillEllipse(Brushes.Cyan, px - 3, py - 3, 6, 6);
-        }
-
-        private void DrawContourLines(Graphics g)
-        {
-            using Pen pen = new Pen(Color.FromArgb(180, 120, 220, 255), 1);
-
-            int cols = _terrain.GridCols;
-            int rows = _terrain.GridRows;
-            int cell = _terrain.CellSize;
-
-            double minH = double.MaxValue;
-            double maxH = double.MinValue;
-
-            double[,] heights = new double[rows, cols];
-
-            for (int row = 0; row < rows; row++)
-            {
-                for (int col = 0; col < cols; col++)
-                {
-                    double x = _terrain.WorldMin + (_terrain.WorldMax - _terrain.WorldMin) * col / (cols - 1.0);
-                    double y = _terrain.WorldMin + (_terrain.WorldMax - _terrain.WorldMin) * row / (rows - 1.0);
-
-                    double h = _terrain.Height(x, y);
-                    heights[row, col] = h;
-
-                    if (h < minH) minH = h;
-                    if (h > maxH) maxH = h;
-                }
-            }
-
-            for (int row = 0; row < rows - 1; row++)
-            {
-                for (int col = 0; col < cols - 1; col++)
-                {
-                    int q = (int)(((heights[row, col] - minH) / (maxH - minH)) * 12);
-                    int qRight = (int)(((heights[row, col + 1] - minH) / (maxH - minH)) * 12);
-                    int qDown = (int)(((heights[row + 1, col] - minH) / (maxH - minH)) * 12);
-
-                    int x = col * cell;
-                    int y = row * cell;
-
-                    if (q != qRight)
-                    {
-                        g.DrawLine(pen, x + cell - 1, y, x + cell - 1, y + cell);
-                    }
-
-                    if (q != qDown)
-                    {
-                        g.DrawLine(pen, x, y + cell - 1, x + cell, y + cell - 1);
-                    }
-                }
-            }
-        }
-
-        private void DrawHud(Graphics g)
-        {
-            int mapWidth = _terrain.GridCols * _terrain.CellSize;
-
-            using SolidBrush bg = new SolidBrush(Color.FromArgb(240, 25, 25, 25));
-            g.FillRectangle(bg, mapWidth, 0, HudWidth, ClientSize.Height);
-
-            using Font titleFont = new Font("Segoe UI", 15, FontStyle.Bold);
-            using Font bodyFont = new Font("Segoe UI", 10, FontStyle.Regular);
-            using Font smallFont = new Font("Segoe UI", 9, FontStyle.Regular);
-
-            double h = _terrain.Height(_player.X, _player.Y);
-            double fx = _terrain.PartialX(_player.X, _player.Y);
-            double fy = _terrain.PartialY(_player.X, _player.Y);
-            double gradMag = Math.Sqrt(fx * fx + fy * fy);
-
-            string levelName = (_gameMode == GameMode.Endless)
-                ? $"Endless Round {_endlessRound}"
-                : (_currentLevelIndex >= 0 && _currentLevelIndex < _levels.Count ? _levels[_currentLevelIndex].Name : "Complete");
-
-            int y = 18;
-
-            g.DrawString(levelName, titleFont, Brushes.Gold, mapWidth + 15, y);
-            y += 34;
-
-            g.DrawString($"Difficulty: {_difficulty}", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString($"Mode: {_gameMode}", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString($"Score: {_score}", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString($"Time left: {GetSecondsLeft()} s", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 26;
-
-            g.DrawString($"Position: ({_player.X:F2}, {_player.Y:F2})", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString($"f(x,y): {h:F2}", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString($"fx: {fx:F2}", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString($"fy: {fy:F2}", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString($"|∇f|: {gradMag:F2}", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 26;
-
-            string terrainText = _playerNearWater ? "Terrain: Mud / Water" : _playerOnIce ? "Terrain: Ridge / Ice" : "Terrain: Normal";
-            g.DrawString(terrainText, bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-
-            string calcText = gradMag < 0.18 ? "Math hint: near critical region" : "Math hint: follow ∇f uphill";
-            g.DrawString(calcText, bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 30;
-
-            g.DrawString("Resources", titleFont, Brushes.Gold, mapWidth + 15, y);
-            y += 32;
-
-            string hintsText = _allowHintArrow ? $"{_maxHints - _hintUses}/{_maxHints}" : "Disabled";
-            string stepText = _allowGradientStep ? $"{_maxGradientSteps - _gradientStepsUsed}/{_maxGradientSteps}" : "Disabled";
-
-            g.DrawString($"Hints: {hintsText}", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString($"Gradient steps: {stepText}", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 30;
-
-            g.DrawString("Controls", titleFont, Brushes.Gold, mapWidth + 15, y);
-            y += 32;
-            g.DrawString("W A S D   move", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString("SPACE      gradient step", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString("H               hint arrow", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 22;
-            g.DrawString("R               restart", bodyFont, Brushes.White, mapWidth + 15, y);
-            y += 30;
-
-            g.DrawString("Mode Goal", titleFont, Brushes.Gold, mapWidth + 15, y);
-            y += 30;
-
-            string goalText = _criticalPointGoal
-                ? "Find a point where |∇f| is very close to zero."
-                : "Reach the global maximum on the terrain.";
-
-            g.DrawString(goalText, smallFont, Brushes.White, new RectangleF(mapWidth + 15, y, 305, 42));
-            y += 52;
-
-            g.DrawString("Medal Goal", titleFont, Brushes.Gold, mapWidth + 15, y);
-            y += 30;
-            g.DrawString("Gold: almost no help\nPlatinum: Expert with no assists", smallFont, Brushes.White, new RectangleF(mapWidth + 15, y, 300, 48));
-            y += 60;
-
-            if (_messageFrames > 0)
-            {
-                using SolidBrush msgBg = new SolidBrush(Color.FromArgb(170, 0, 0, 0));
-                Rectangle rect = new Rectangle(mapWidth + 10, ClientSize.Height - 130, 310, 95);
-                g.FillRectangle(msgBg, rect);
-                g.DrawRectangle(Pens.Gold, rect);
-                g.DrawString(_message, bodyFont, Brushes.White, new RectangleF(mapWidth + 20, ClientSize.Height - 118, 290, 70));
+                MenuRenderer.DrawOverlay(g, ClientSize, "LEVEL COMPLETE", $"Medal: {_lastMedal}\nPress Enter");
             }
         }
 
